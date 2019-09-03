@@ -1,5 +1,7 @@
 # This function orginated from work done in Croteau et al. (2016):
 
+"https://www.sciencedirect.com/science/article/pii/S0022169415007404"
+
 FDC.annual <- function(q,dates,p=seq(1,365)/366,WY=T){
   
   # Variables:
@@ -52,3 +54,4 @@ FDC.annual <- function(q,dates,p=seq(1,365)/366,WY=T){
   
   return(Qp)
 }
+

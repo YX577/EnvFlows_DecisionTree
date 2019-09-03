@@ -6,14 +6,13 @@
 P_A <- 0.5
 P_NA <- 1 - P_A
 
-# Type I error
+# Set Type I (aa) and Type II (bb) errors
 aa <- 0.2
-# Type II error
 bb <- 0.6
 
-# Cost of overprotection
-C_NA_CA <- 10
-C_A_CNA <- 10
+# Set costs of overprotection and underprotection
+C_NA_CA <- 10 # Overprotection
+C_A_CNA <- 10 # Underprotection
 
 ########################## RUN BAYESIAN DECISION TREE #################################
 

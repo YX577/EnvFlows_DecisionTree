@@ -6,56 +6,58 @@
 # hydropower reservoirs generating baseload electricity according to prescribed 
 # operation rules. 
 
-# CREDITS: Some of the code for fititng the 7Q10 low flows was developed from a code
-# base provided by Annalise Blum
-
-################################ IMPORT DATA ####################################
-
-# Set working directory for laptop
-setwd("C:/Users/joryh/ownCloud/documents/Tufts/Hydro_Alteration/HA_HypTest/Codes")
-
 # Load packages
 library("lmomco")  # For computing 7-day, 10-year low flow (7Q10)
 library("lubridate") # For handling dates nicely
 
-# Import inflow time series
-Q_in_table <- read.csv("Q_predam_02080500.csv")
+################################ IMPORT DATA ####################################
+
+# Set working directory for your computer
+root <- "C:/Users/joryh/ownCloud/documents/Tufts/Hydro_Alteration/HA_HypTest/Codes"
+
+# Import inflow time series after determining pre-dam record
+Q_in_table <- read.csv(paste0(root,"/Q_predam_02080500.csv"))
 
 # Format dates
 Q_in_table$Date <- as.Date(Q_in_table$Date,format="%m/%d/%Y")
 
-# Remove NA's
+# Remove NA's if any
 Q_in_table <- Q_in_table[!is.na(Q_in_table$Date),]
 
 # Limit table to observations within pre-dam record (10/1/1912 - 9/30/1949)
 Q_in_table <- Q_in_table[Q_in_table$Date >= as.Date("10/1/1912",format="%m/%d/%Y") &
               Q_in_table$Date <= as.Date("9/30/1949",format="%m/%d/%Y"),]
 
-# Create vectors from data frame
+# Create vectors from data frame for ease of use
 dates <- Q_in_table$Date
 
 # Create inflow vector
 Q_in <-  Q_in_table$Q_mean
 
+# Convert to cubic meters per second (if necessary)
+Q_in <- Q_in/35.3147
+
 # Check for missing data
-Q_in_missing_bool <- is.na(Q_in)
-Q_in_missing_num <- as.numeric(Q_in_missing_bool)
-if (sum(Q_in_missing_bool) > 0) {
+if (sum(is.na(Q_in)) > 0) {
   stop ('Missing data! Check input.')   
 }
 
-# Compute mean flow
+# Compute period-of-record mean flow
 Q_mean <- mean(Q_in)
 
-# Daily average inflows and precipitation onto reservoir surface 
-plot(Q_in,type="l")
+# Plot daily mean discharge time series of reservoir inflow
+plot(Q_in,type="l",
+     las=1)
 
 # Number of days
 nd <- length(Q_in)
 day_por <- seq(1,nd,1)  #Date in time series for plotting purposes
 
 
-####################### Compute 7Q10 low flow ##############################
+############### Compute 7Q10 low flow for reservoir operating rules ####################
+
+# Parts of the section of this code were adapted from scripts provided by Annalise
+# Blum. This code depends upon the lmomco package written by William Asquith. 
 
 # The 7Q10 (7-day low flow with a 10-year recurrence interval) is the minimum release 
 # allowed from the dam unless there is an extreme drought
@@ -70,11 +72,6 @@ for (i in 1:(length(Q_in)-6)){
 Q_in_7d_dates <- data.frame(year(dates[4:13511]),dates[4:13511],Q_in_7d) 
 names(Q_in_7d_dates) <- c("Year","Date","Q_in_7d")
 
-
-#dates_7d <- dates
-#dates_7d_yr <- dates_7d$year
-#Q_in_7d_dates <- cbind(dates_7d_yr[4:13511],Q_in_7d)
-
 # Extract minimum 7-day low flows for each calendar year
 tmp <- split(Q_in_7d_dates$Q_in_7d,Q_in_7d_dates$Year)
 tmp_min <- lapply(tmp,min)
@@ -82,6 +79,7 @@ Q_min_7d_yrs <- matrix(unlist(tmp_min), ncol = 1, byrow = TRUE)
 
 # Remove first and last year, which are not complete
 Q_min_7d_yrs <- Q_min_7d_yrs[2:37,] #length of Q_min_7d_yrs = 38
+# FIX: Check for complete cases
 
 # Sort annual seven-day low flows 
 Q_min_7d_ranked <- sort(Q_min_7d_yrs)
@@ -127,16 +125,15 @@ plot(FGP3_est,Q_min_7d_ranked)
 plot(FKap_est,Q_min_7d_ranked) 
 
 # Compute 7Q10
-FGP2_7Q10 <- quagpa(0.1,par_lf_gp2) # 650
-FGP3_7Q10 <- quagpa(0.1,par_lf_gp3) # 967
-FKap_7Q10 <- quakap(0.1,par_lf_kap) # 1012
-FWak_7Q10 <- quawak(0.1,par_lf_wak) # 923
+FGP2_7Q10 <- quagpa(0.1,par_lf_gp2) 
+FGP3_7Q10 <- quagpa(0.1,par_lf_gp3)
+FKap_7Q10 <- quakap(0.1,par_lf_kap) 
+FWak_7Q10 <- quawak(0.1,par_lf_wak) 
 
+# Compute Q90 (90% exceedance probability flow during pre-dam period)
 Q90_pre <- quantile(Q_in,0.10)
-
-# ratio_7Q10_Qmean <- FKap_7Q10/mean(Q_in)
 ratio_7Q10_Qmean <- Q90_pre/mean(Q_in)
-
+# Alternatively, can use distribution-based value
 
 ########################## COMPUTE MONTHLY FLOW REQS ##############################
 
@@ -161,10 +158,12 @@ for(j in 1:12){
   MMF[j] = mean(df_Q_in[month(df_Q_in$dates) == j,]$Q_in)
 }
 
+# Use 
 MAF <- mean(Q_in)
 
 MMF_MAF <- MMF/MAF
 
+# Compute monthly environmental flow requirements
 EFR_frac <- vector(mode="numeric",12)
 
 for(j in 1:12){
@@ -196,21 +195,18 @@ pan_to_lake = 0;
 
 ########################## CHOOSE RESERVOIR DESIGN PARAMETERS ########################
 
-# Dead storage ratio        
-SR_dead = 0.00; 
+# SCENARIO-INVARIANT PARAMETERS
 
 # Live storage ratio
 SR_live = 1.00; 
 
+# Dead storage ratio        
+SR_dead = 0.00; 
+# Not used in paper
+
 # Flood storage ratio
-SR_flood = 0.20; 
-# FIX: Add error statement to make sure SR_flood > SR_npool
-
-# Low-flow outlet ratio (outlet flow capacity/mean annual flow) 
-lfo_ratio = 0.1; 
-
-# Turbine ratio (total turbine flow capacity/mean annual flow)
-turb_ratio = 1; 
+SR_flood = 0.00; 
+# Not used in paper
 
 # Spillway ratio (spillway discharge capacity/mean annual flow)
 spway_ratio = 100;
@@ -218,41 +214,28 @@ spway_ratio = 100;
 # Efficiency of power generation
 eff = 0.80; 
 
-# Min turb flow fraction that prevents releases through turbines when storage available 
-# for release is less than a given percentage of the total turbine flow capacity
-# This parameter can be set lower if there are many turbines in a dam, i.e. have only 2 out of 10 
-# turbines open
+# DAILY RESERVOIR SIMULATION MODEL 
 
-turb_min_pct = 0.5;
-
-# DAILY RESERVOIR SIMULATION MODEL ----------------------------------------
-
-# Initialize vectors 
-Q_lfo <- vector(mode = "numeric", length=length(Q_in))
-Q_turb <- vector(mode = "numeric", length=length(Q_in))
-Q_spway <- vector(mode = "numeric", length=length(Q_in))
-Q_out <- vector(mode = "numeric", length=length(Q_in))
-SA_lake <- vector(mode = "numeric", length=length(Q_in))
-E_lake <- vector(mode = "numeric", length=length(Q_in))
-head <- vector(mode = "numeric", length=length(Q_in))
-hpower <-vector(mode= "numeric", length=length(Q_in))
-S <- vector(mode = "numeric", length=length(Q_in)+1) # 1 longer to have initial storage
-S_live_pct <- vector(mode = "numeric", length=length(Q_in))
-WL <- vector(mode = "numeric", length=length(Q_in))
 
 # Variable parameters
 op_rule <- c(1,2)
 SR_live <- c(0.01,0.243) #storage ratio measured in years - includes both live (conservation) and dead storage
 # 0.243 is based on John H. Kerr
-turb_ratio <- c(0.05,1.1)
+turb_ratio <- c(0.05,1.1) # Ratio of maximum simultaneous discharge capacity of turbine array to mean annual discharge
 lfo_ratio<- c(0.05,ratio_7Q10_Qmean) # Replaced later with Q_out_min
-turb_min_pct <- c(0.05,0.2)
+turb_min_pct <- c(0.05,0.2) # Min turb flow fraction that prevents releases through turbines when storage available 
+# for release is less than a given percentage of the total turbine flow capacity
+# This parameter can be set lower if there are many turbines in a dam, i.e. have only 2 out of 10 
+# turbines open
+
 head_min <- c(20,50) #Leave these after changing other units from ft to m
+
+
 
 # Initialize parameter array
 params <- matrix(nrow=prod(length(op_rule),length(SR_live),length(turb_ratio),length(turb_min_pct),length(lfo_ratio),length(head_min)),ncol=6)
 
-rr = 0; #Change to expand.grid? 
+rr = 0;  
 
 for (hh in 1:length(op_rule)){
   for (ii in 1:length(SR_live)){
@@ -274,31 +257,46 @@ for (hh in 1:length(op_rule)){
   }
 }
 
-# Export params as csv
-write.csv(params,"params.csv",row.names)
+# Export params as csv for later use
+write.csv(params,"params.csv",row.names=T)
+
+################################## RUN SIMULATION ###############################
+
+# Initialize state variable vectors
+Q_lfo <- vector(mode = "numeric", length=length(Q_in))     #m^3/s
+Q_turb <- vector(mode = "numeric", length=length(Q_in))    #m^3/s
+Q_spway <- vector(mode = "numeric", length=length(Q_in))   #m^3/s
+Q_out <- vector(mode = "numeric", length=length(Q_in))     #m^3/s
+SA_lake <- vector(mode = "numeric", length=length(Q_in))   #FIX
+E_lake <- vector(mode = "numeric", length=length(Q_in))    #FIX
+head <- vector(mode = "numeric", length=length(Q_in))      #meters
+hpower <-vector(mode= "numeric", length=length(Q_in))      #FIX
+S <- vector(mode = "numeric", length=length(Q_in)+1) # 1 longer to have initial storage
+S_live_pct <- vector(mode = "numeric", length=length(Q_in))
+WL <- vector(mode = "numeric", length=length(Q_in))
 
 # Create arrays for output variables
-Q_out_res <- array(NA,dim=c(nd,nrow(params)))
-Q_lfo_res <- array(NA,dim=c(nd,nrow(params)))
-Q_turb_res <- array(NA,dim=c(nd,nrow(params)))
-Q_spway_res <- array(NA,dim=c(nd,nrow(params)))
-SA_lake_res <- array(NA,dim=c(nd+1,nrow(params)))
-E_lake_res <- array(NA,dim=c(nd,nrow(params)))
-WL_res <- array(NA,dim=c(nd+1,nrow(params)))
-head_res <- array(NA,dim=c(nd,nrow(params)))
-S_res <- array(NA,dim=c(nd+1,nrow(params)))
-hpower_res <- array(NA,dim=c(nd,nrow(params)))
+# FIX: Add units
+Q_out_res <- array(NA,dim=c(nd,nrow(params))) # Total outflow
+Q_lfo_res <- array(NA,dim=c(nd,nrow(params))) # Outflow through low-flow outlet
+Q_turb_res <- array(NA,dim=c(nd,nrow(params))) # Outflow through turbine outlets
+Q_spway_res <- array(NA,dim=c(nd,nrow(params))) # Outflow through spillway
+SA_lake_res <- array(NA,dim=c(nd+1,nrow(params))) # Reservoir surface area
+E_lake_res <- array(NA,dim=c(nd,nrow(params))) # Reservoir evaporation 
+WL_res <- array(NA,dim=c(nd+1,nrow(params))) # Reservoir water level
+head_res <- array(NA,dim=c(nd,nrow(params))) # Reservoir head (relative to tailwater elev.)
+S_res <- array(NA,dim=c(nd+1,nrow(params))) # Reservoir storage volume
+hpower_res <- array(NA,dim=c(nd,nrow(params))) # Reservoir hydropower generated 
 
 # Designate reservoir operation rule
 #op_rule = 2;
 # 1 = energy maximization, # 2 = flow variability preservation
+
+# Set fraction of inflow restrictions. Leave at one for run-of-river operations. 
 foi_min = 1; # Sets minimum outflow as a fraction of inflow
 foi_max = 1 # Sets maximum outflow as a fraction of inflow
-# Downstream flow
-
 
 ############################## RUN SIMULATION ####################################
-
 '
 Turbine releases under Operating Rule 1 (energy maximization with constant min flow)   
 
@@ -316,8 +314,10 @@ If the storage is below 10%, do not release any water through turbines
 to maintain storage in reservoir 
 '
 
-for (b in 1:nrow(params)){    #Combination of parameters
+# BEGIN LOOP OF SIMULATIONS FOR DIFFERENT PARAMETER COMBINATIONS
 
+for (b in 1:nrow(params)){    
+  
   # These lines rename the parameters to make the reserovir model more readable
   op_rule <- params[b,1]
   S_live_cap <- params[b,2]
@@ -327,7 +327,9 @@ for (b in 1:nrow(params)){    #Combination of parameters
   head_min <- params[b,6]
   
   # Initialize storage - assume reservoir is full at the start of operations
-  S[1] = 1*S_live_cap
+  init_S_frac <- 1
+  
+  S[1] = init_S_frac*S_live_cap
   
   for(t in 1:nd){
   
@@ -376,7 +378,8 @@ for (b in 1:nrow(params)){    #Combination of parameters
       # a surface area of zero
       
     # This rule releases the difference between the turbine release and the low-flow outlet
-    # capacity when 
+    # capacity when there is an environmental flow requirement? 
+    # FIX: Check
       
     # Operating rule 2: Calculate flow passing through low-flow outlet 
     } else if (op_rule == 2){ 
@@ -403,9 +406,6 @@ for (b in 1:nrow(params)){    #Combination of parameters
       # is achieved, unless the low-flow outlet capacity limits the volume that can be \
       # released to meet this target
     
-    
-
-
     # Compute outflows through various outlets
     Q_out[t] = Q_lfo[t]+Q_turb[t]+Q_spway[t]
     Q_lfo_res[t,b] = Q_lfo[t]
@@ -438,21 +438,20 @@ for (b in 1:nrow(params)){    #Combination of parameters
 
     # Compute average power generation on day t in kWh
 
-    hpower[t] <- 0.001*24*9.81*eff*(Q_turb[t]/35.3*1000)*(0.9*head[t]/3.281)
+    hpower[t] <- 0.001*24*9.81*eff*(Q_turb[t]*1000)*(0.9*head[t]/3.281)
   
         # From http://www.renewablesfirst.co.uk/hydropower/hydropower-learning-centre/how-much-power-could-i-generate-from-a-hydro-turbine/
         # 0.001 converts watts to kilowatts
         # 24 hours per day
         # 9.81 is the rate of gravitational acceleration at the Earth's surface
-        # 35.3 converts the flow from cfs to m3/s, 1000 converts the flow from m3/s to L/s
         # 0.9 reduces the gross head to account for head losses
         # 3.281 converts the head from ft to meters
   
     hpower_res[t,b] = hpower[t]
   
     # Compute installed capacity
-    head_rated <- 96
-    HP_cap_inst <- 0.001*9.81*eff*(Q_turb_cap/35.3*1000)*(0.9*head_rated/3.281)
+    head_rated <- 96 # in feet 
+    HP_cap_inst <- 0.001*9.81*eff*(Q_turb_cap*1000)*(0.9*head_rated/3.281)
     
     
   }
@@ -460,6 +459,9 @@ for (b in 1:nrow(params)){    #Combination of parameters
 }
 
 # END OF LOOP
+
+# Save outputs
+save(hpower)
 
 ########################## COMPUTE OUTPUT STATISTICS ################################
 
@@ -477,26 +479,13 @@ plot(Q_spway_res[,32],Q_lfo_res[,32]) # A few days with both bypass releases and
 plot(Q_turb_res[,32],Q_lfo_res[,32]) # Bypass releases during low-flow periods, bypass releases when turbine capacity exceeded
 plot(Q_spway_res[,32],Q_turb_res[,32]) # Spills only occur when turbine release complete
 
-# Hydropower regret (Operating Rule 1 vs. Operating Rule 2)
-regret_min_hpower <- min_hpower[1:32]-min_hpower[33:64]
-regret_avg_hpower <- avg_hpower[1:32]-avg_hpower[33:64]
-
-# Relative differences over baseline (minimum value)
-ob_min_hpower <- min_hpower-min(min_hpower)
-ob_avg_hpower <- avg_hpower-min(avg_hpower)
-
-ob_min_hpower_pct <- (min_hpower-min(min_hpower))/min(min_hpower)-1
-ob_avg_hpower_pct <- (avg_hpower-min(avg_hpower))/min(avg_hpower)-1
-
-# Compare hydropower differences between operating rules
-
 # Plot reservoir inflows, outflows
 par(mar=c(5,5,4,2)+0.1)
-plot(day_por/365.24,Q_in/35.31,type="l",log="y",ylim=c(10,10000),
+plot(day_por/365.24,Q_in,type="l",log="y",ylim=c(1,10000),
      xlab="Years",cex.axis=0.80,
      ylab= expression(paste("Outflow (m"^"3","/s)",sep="")),las=1,
      main="Pre- and post-dam daily flows",col="gray80") 
-lines(day_por/365.24,Q_out_res[,32]/35.31,col="black")
+lines(day_por/365.24,Q_out_res[,32],col="black")
 legend("bottomleft",c("Pre-dam","Post-dam"),lty=c(1,1),col=c("gray80","black"),bty="n",cex=0.8)
 par(mar=c(5,4,4,2)+0.1)
 
@@ -531,7 +520,7 @@ length(Q_lfo_res[,32][Q_lfo_res[,32]==Q_lfo_cap])
 plot(Q_lfo_res[,32]+0.1,hpower_res[,32],log="x")
 
 # Compute plant factor
-sum(hpower_res[,32])/24/(HP_cap_inst*nd)
+sum(hpower_res[,32])/24/HP_cap_inst*nd
 
 # Compute average annual energy generation in GWh
 sum(hpower_res[,32])/37/10^6
